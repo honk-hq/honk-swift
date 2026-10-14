@@ -86,6 +86,50 @@ struct ClientTests {
         #expect(Severity.warning.horn == "loud")
     }
 
+    @Test func honkUhohAndPhewSendWhatSendProblemAndRecoverySend() async throws {
+        MockURLProtocol.script([.accepted()])
+        let honk = try mockClient()
+        let order = Message("Someone bought 3 rubber chickens", title: "New order", severity: .beep, category: .sales)
+        try await honk.honk(order, idempotencyKey: "order-1042")
+        try await honk.send(order, idempotencyKey: "order-1042")
+        try await honk.uhoh(groupKey: "shop/stock", "Rubber chickens sold out", "Someone bought the last 3.", idempotencyKey: "stock-1") { $0.priority = .high }
+        try await honk.problem(groupKey: "shop/stock", "Rubber chickens sold out", "Someone bought the last 3.", idempotencyKey: "stock-1") { $0.priority = .high }
+        try await honk.phew(groupKey: "shop/stock", "Rubber chickens restocked", "200 more in the warehouse.", idempotencyKey: "stock-2")
+        try await honk.recovery(groupKey: "shop/stock", "Rubber chickens restocked", "200 more in the warehouse.", idempotencyKey: "stock-2")
+        try await honk.honk(order)
+        try await honk.uhoh(groupKey: "q", nil, "failing") { $0.groupKey = "ignored"; $0.severity = .blast }
+
+        let r = MockURLProtocol.requests
+        #expect(r.count == 8)
+        for i in stride(from: 0, to: 6, by: 2) {
+            #expect(r[i].json as NSDictionary == r[i + 1].json as NSDictionary)
+            #expect(r[i].header("Idempotency-Key") == r[i + 1].header("Idempotency-Key"))
+        }
+        #expect(r[0].header("Idempotency-Key") == "order-1042")
+        #expect(r[0].json as NSDictionary == ["title": "New order", "message": "Someone bought 3 rubber chickens", "severity": "success", "category": "sales"])
+        #expect(r[2].json as NSDictionary == ["title": "Rubber chickens sold out", "message": "Someone bought the last 3.", "severity": "error", "priority": "high", "group_key": "shop/stock", "event_type": "problem"])
+        #expect(r[4].json as NSDictionary == ["title": "Rubber chickens restocked", "message": "200 more in the warehouse.", "severity": "success", "group_key": "shop/stock", "event_type": "recovery"])
+        #expect(isUUIDv7(r[6].header("Idempotency-Key") ?? ""))
+        #expect(r[7].json as NSDictionary == ["message": "failing", "severity": "critical", "group_key": "q", "event_type": "problem"])
+    }
+
+    /// Users qualify names with the module when their own code has a `Message` or `Severity` too.
+    /// That only works while the module (`HonkMe`) and the client class (`Honk`) have different
+    /// names: in a module named `Honk`, `Honk.Message` would look for a member of the class.
+    @Test func moduleQualifiedNamesResolve() async throws {
+        MockURLProtocol.script([.accepted()])
+        let honk: HonkMe.Honk = try mockClient()
+        let message: HonkMe.Message = HonkMe.Message("Someone bought 3 rubber chickens", severity: HonkMe.Severity.beep)
+        try await honk.honk(message)
+        do {
+            try await honk.honk(HonkMe.Message(""))
+            Issue.record("an empty message must not be sent")
+        } catch let error as HonkMe.HonkError {
+            #expect(error.failure?.isLocal == true)
+        }
+        #expect(HonkMe.Honk.version == Honk.version)
+    }
+
     @Test func retriesReuseTheIdempotencyKeyAndBody() async throws {
         MockURLProtocol.script([.error(503, "unavailable", retryAfter: "0"), .error(500, "internal"), .fail(.networkConnectionLost), .accepted()])
         let accepted = try await mockClient().send(Message("x"))

@@ -5,6 +5,20 @@
 Official Swift client for [Honk](https://honk-me.app), the inbox that turns events from your
 apps, scripts, cron jobs and CI into calm, grouped push notifications on your phone.
 
+```swift
+import HonkMe
+
+let honk = try Honk.fromEnvironment()
+
+try await honk.honk(Message("Someone bought 3 rubber chickens", title: "New order", severity: .beep))
+try await honk.uhoh(groupKey: "shop/stock", "Rubber chickens sold out", "Someone bought the last 3.")
+// a supplier is called, a van is loaded
+try await honk.phew(groupKey: "shop/stock", "Rubber chickens restocked", "200 more in the warehouse. Squeak responsibly.")
+```
+
+A sale, then a problem and its fix: `uhoh` opens an incident for `shop/stock` and `phew` closes
+it, so your phone tells one short story instead of raising two alarms.
+
 - Swift 6.2+, strict concurrency, `Sendable` throughout, async/await. No dependencies.
 - macOS 14+, iOS 17+ and Linux (URLSession via FoundationNetworking).
 - Retries with backoff, `Retry-After`, a total deadline and an idempotency key on every send,
@@ -20,7 +34,7 @@ apps, scripts, cron jobs and CI into calm, grouped push notifications on your ph
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/honk-me/honk-swift.git", from: "0.2.0"),
+.package(url: "https://github.com/honk-me/honk-swift.git", from: "0.3.0"),
 // target:
 .product(name: "HonkMe", package: "honk-swift"),
 ```
@@ -85,7 +99,7 @@ func routes(_ app: Application, honk: Honk) {
         )
         let logger = req.logger
         Task {
-            do { try await honk.send(message, idempotencyKey: "request-\(id)") }   // same request, same key
+            do { try await honk.honk(message, idempotencyKey: "request-\(id)") }   // same request, same key
             catch { logger.warning("honk: \(error)") }
         }
         return .accepted
@@ -101,20 +115,20 @@ Create the `Honk` once at startup and share it: it is `Sendable` and owns a keep
 Messages with the same `groupKey` (per project, environment, source and channel) form one group:
 the first one pushes, repeats update it calmly instead of buzzing again. Use one key per customer
 request (`requests/<id>`), and a shared key only for repeats of the same problem
-(`queue/failed-jobs`). `problem`/`recovery` pairs need a `groupKey`.
+(`queue/failed-jobs`). `uhoh`/`phew` pairs need a `groupKey`.
 
 ## Sending
 
 ```swift
 @discardableResult
-func send(_ message: Message, idempotencyKey: String? = nil) async throws -> Accepted   // id, duplicate, receivedAt
+func honk(_ message: Message, idempotencyKey: String? = nil) async throws -> Accepted   // id, duplicate, receivedAt
 ```
 
 ```swift
 let message = Message("Billing API could not connect to Redis", title: "Redis down", severity: .long,
                       groupKey: "billing/redis", url: "https://status.example.com/redis",
                       metadata: ["host": "app-01", "attempts": 3])
-try await honk.send(message, idempotencyKey: "redis-down-2026-10-03")
+try await honk.honk(message, idempotencyKey: "redis-down-2026-10-03")
 ```
 
 | Field | Notes |
@@ -142,9 +156,12 @@ message:
 
 ```swift
 try await honk.loud("Disk 91%", "/var on app-01") { $0.groupKey = "disk/app-01/var" }
-try await honk.problem(groupKey: "db/backup", "Backup failed", "pg_dump exited with 1")   // a long honk by default
-try await honk.recovery(groupKey: "db/backup", "Backup OK", "pg_dump finished in 41 s")  // a beep by default
+try await honk.uhoh(groupKey: "db/backup", "Backup failed", "pg_dump exited with 1")   // a problem: a long honk by default
+try await honk.phew(groupKey: "db/backup", "Backup OK", "pg_dump finished in 41 s")    // its recovery: a beep by default
 ```
+
+`send`, `problem` and `recovery` still work: they are `honk`, `uhoh` and `phew` under their 0.2
+names, with no deprecation warning.
 
 Options: `Honk(url:key:timeout:retries:deadline:defaults:validate:backoff:configuration:userAgent:)`
 with `timeout` 5 s per attempt, `retries` 4, `deadline` 30 s, a `URLSessionConfiguration`
