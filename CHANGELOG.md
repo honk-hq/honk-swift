@@ -4,6 +4,16 @@ All notable changes to the `HonkMe` Swift package are documented here. The forma
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-14
+
+### Added
+- `honk(_:idempotencyKey:)`, `uhoh(groupKey:_:_:idempotencyKey:_:)` and
+  `phew(groupKey:_:_:idempotencyKey:_:)` on `Honk`.
+- `send`, `problem` and `recovery` stay, without deprecation warnings, as plain aliases of
+  `honk`, `uhoh` and `phew`: same arguments, same results.
+
+Upgrading from 0.2: bump the version (`from: "0.3.0"`); nothing else changes.
+
 ## [0.2.0] - 2026-10-07
 
 ### Added

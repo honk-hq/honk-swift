@@ -10,12 +10,17 @@ import Foundation
 /// ```swift
 /// let honk = try Honk(url: "https://honk.example.com", key: secret)
 /// try await honk.beep("Backup finished", "nightly pg_dump took 42 s")
+/// try await honk.uhoh(groupKey: "shop/stock", "Rubber chickens sold out", "Someone bought the last 3.")
+/// try await honk.phew(groupKey: "shop/stock", "Rubber chickens restocked", "200 more in the warehouse.")
 /// ```
+///
+/// `send`, `problem` and `recovery` are the same methods as `honk`, `uhoh` and `phew`, under their
+/// older names.
 ///
 /// The ingestion key is a server-side secret: use this package in server-side Swift (Vapor,
 /// Hummingbird), macOS tools and CLIs, never inside an app you ship to users.
 public final class Honk: Sendable {
-    public static let version = "0.2.0"
+    public static let version = "0.3.0"
 
     /// Base URL of the Honk server.
     public let url: URL
@@ -162,6 +167,13 @@ public final class Honk: Sendable {
         }
     }
 
+    /// Honks: sends one event. The same method as `send(_:idempotencyKey:)`, under its new name:
+    /// same arguments, same retries, same result.
+    @discardableResult
+    public func honk(_ message: Message, idempotencyKey: String? = nil) async throws -> Accepted {
+        try await send(message, idempotencyKey: idempotencyKey)
+    }
+
     // MARK: Helpers
 
     /// A problem for `groupKey` (opens or continues its incident). Severity defaults to `.long` (error).
@@ -182,6 +194,20 @@ public final class Honk: Sendable {
         m.groupKey = groupKey
         m.eventType = .recovery
         return try await send(m, idempotencyKey: idempotencyKey)
+    }
+
+    /// Uh-oh: a problem for `groupKey`. The same method as `problem(groupKey:…)`: opens or
+    /// continues the group's incident, a long honk (error) by default.
+    @discardableResult
+    public func uhoh(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
+        try await problem(groupKey: groupKey, title, message, idempotencyKey: idempotencyKey, configure)
+    }
+
+    /// Phew: a recovery for `groupKey`. The same method as `recovery(groupKey:…)`: closes the
+    /// group's open incident, a beep (success) by default.
+    @discardableResult
+    public func phew(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
+        try await recovery(groupKey: groupKey, title, message, idempotencyKey: idempotencyKey, configure)
     }
 
     /// A light honk (info).
