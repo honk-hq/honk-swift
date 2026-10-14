@@ -12,7 +12,8 @@ All notable changes to the `HonkMe` Swift package are documented here. The forma
 - `send`, `problem` and `recovery` stay, without deprecation warnings, as plain aliases of
   `honk`, `uhoh` and `phew`: same arguments, same results.
 
-Upgrading from 0.2: bump the version (`from: "0.3.0"`); nothing else changes.
+Upgrading from 0.2: bump the version (`from: "0.3.0"`); nothing else changes. The import stays
+`import HonkMe` (the module), and `Honk` is still the client type.
 
 ## [0.2.0] - 2026-10-07
 

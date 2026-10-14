@@ -39,6 +39,7 @@ it, so your phone tells one short story instead of raising two alarms.
 .product(name: "HonkMe", package: "honk-swift"),
 ```
 
+The import stays `import HonkMe`: `HonkMe` is the module, `Honk` is the client type inside it.
 In Xcode: *File → Add Package Dependencies…* and paste `https://github.com/honk-me/honk-swift`.
 Create a project and an ingestion key at [honk-me.app](https://honk-me.app). Its
 *Integrations* page generates ready-to-paste code for this package.
