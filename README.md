@@ -1,6 +1,6 @@
 # HonkHonk (Swift)
 
-[![CI](https://github.com/honkhonk/honk-swift/actions/workflows/ci.yml/badge.svg)](https://github.com/honkhonk/honk-swift/actions/workflows/ci.yml)
+[![CI](https://github.com/honk-hq/honk-swift/actions/workflows/ci.yml/badge.svg)](https://github.com/honk-hq/honk-swift/actions/workflows/ci.yml)
 
 Official Swift client for [Honk](https://honk-honk.app), the inbox that turns events from your
 apps, scripts, cron jobs and CI into calm, grouped push notifications on your phone.
@@ -34,13 +34,13 @@ it, so your phone tells one short story instead of raising two alarms.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/honkhonk/honk-swift.git", from: "0.4.0"),
+.package(url: "https://github.com/honk-hq/honk-swift.git", from: "0.4.0"),
 // target:
 .product(name: "HonkHonk", package: "honk-swift"),
 ```
 
 The import is `import HonkHonk`: `HonkHonk` is the module, `Honk` is the client type inside it.
-In Xcode: *File → Add Package Dependencies…* and paste `https://github.com/honkhonk/honk-swift`.
+In Xcode: *File → Add Package Dependencies…* and paste `https://github.com/honk-hq/honk-swift`.
 Create a project and an ingestion key at [honk-honk.app](https://honk-honk.app). Its
 *Integrations* page generates ready-to-paste code for this package.
 
@@ -240,8 +240,8 @@ matching it; the tag is the release for SwiftPM (see `CHANGELOG.md`).
 ## Links
 
 - [honk-honk.app](https://honk-honk.app): the Honk inbox (web, iPhone).
-- Other SDKs: [Node.js](https://github.com/honkhonk/node),
-  [PHP / Laravel](https://github.com/honkhonk/php), [Go + CLI](https://github.com/honkhonk/go),
-  [Kotlin / Java](https://github.com/honkhonk/kotlin).
+- Other SDKs: [Node.js](https://github.com/honk-hq/node),
+  [PHP / Laravel](https://github.com/honk-hq/php), [Go + CLI](https://github.com/honk-hq/go),
+  [Kotlin / Java](https://github.com/honk-hq/kotlin).
 
 MIT License.
