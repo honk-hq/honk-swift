@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HonkMe
+@testable import HonkHonk
 
 @Suite struct ValidationTests {
     static let cases: [(String, Message, String, String)] = {

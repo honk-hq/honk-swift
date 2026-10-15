@@ -1,12 +1,12 @@
-# HonkMe (Swift)
+# HonkHonk (Swift)
 
-[![CI](https://github.com/honk-me/honk-swift/actions/workflows/ci.yml/badge.svg)](https://github.com/honk-me/honk-swift/actions/workflows/ci.yml)
+[![CI](https://github.com/honkhonk/swift/actions/workflows/ci.yml/badge.svg)](https://github.com/honkhonk/swift/actions/workflows/ci.yml)
 
 Official Swift client for [Honk](https://honk-honk.app), the inbox that turns events from your
 apps, scripts, cron jobs and CI into calm, grouped push notifications on your phone.
 
 ```swift
-import HonkMe
+import HonkHonk
 
 let honk = try Honk.fromEnvironment()
 
@@ -34,20 +34,20 @@ it, so your phone tells one short story instead of raising two alarms.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/honk-me/honk-swift.git", from: "0.3.0"),
+.package(url: "https://github.com/honkhonk/swift.git", from: "0.4.0"),
 // target:
-.product(name: "HonkMe", package: "honk-swift"),
+.product(name: "HonkHonk", package: "swift"),
 ```
 
-The import stays `import HonkMe`: `HonkMe` is the module, `Honk` is the client type inside it.
-In Xcode: *File → Add Package Dependencies…* and paste `https://github.com/honk-me/honk-swift`.
+The import is `import HonkHonk`: `HonkHonk` is the module, `Honk` is the client type inside it.
+In Xcode: *File → Add Package Dependencies…* and paste `https://github.com/honkhonk/swift`.
 Create a project and an ingestion key at [honk-honk.app](https://honk-honk.app). Its
 *Integrations* page generates ready-to-paste code for this package.
 
 ## Quick start
 
 ```swift
-import HonkMe
+import HonkHonk
 
 let honk = try Honk.fromEnvironment()          // HONK_URL, HONK_KEY (+ HONK_SOURCE, HONK_ENVIRONMENT, HONK_CHANNEL)
 try await honk.beep("Backup finished", "nightly pg_dump took 42 s")
@@ -78,7 +78,7 @@ One group per request (`requests/<id>`) and a stable idempotency key: two differ
 never fold into one notification, and a retried request never buzzes twice.
 
 ```swift
-import HonkMe
+import HonkHonk
 import Vapor
 
 func routes(_ app: Application, honk: Honk) {
@@ -240,8 +240,8 @@ matching it; the tag is the release for SwiftPM (see `CHANGELOG.md`).
 ## Links
 
 - [honk-honk.app](https://honk-honk.app): the Honk inbox (web, iPhone).
-- Other SDKs: [Node.js](https://github.com/honk-me/honk-node),
-  [PHP / Laravel](https://github.com/honk-me/honk-php), [Go + CLI](https://github.com/honk-me/honk-go),
-  [Kotlin / Java](https://github.com/honk-me/honk-kotlin).
+- Other SDKs: [Node.js](https://github.com/honkhonk/node),
+  [PHP / Laravel](https://github.com/honkhonk/php), [Go + CLI](https://github.com/honkhonk/go),
+  [Kotlin / Java](https://github.com/honkhonk/kotlin).
 
 MIT License.

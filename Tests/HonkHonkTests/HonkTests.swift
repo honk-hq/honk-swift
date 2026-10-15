@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HonkMe
+@testable import HonkHonk
 
 func isUUIDv7(_ s: String) -> Bool {
     s.wholeMatch(of: /[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/) != nil
@@ -32,7 +32,7 @@ struct ClientTests {
         #expect(r.url.absoluteString == "https://honk.test/v1/messages")
         #expect(r.header("Authorization") == "Bearer \(testKey)")
         #expect(r.header("Content-Type") == "application/json")
-        #expect(r.header("User-Agent") == "honk-me-swift/\(Honk.version)")
+        #expect(r.header("User-Agent") == "honk-swift/\(Honk.version)")
         #expect(isUUIDv7(r.header("Idempotency-Key") ?? ""))
         let json = r.json
         #expect(json["title"] as? String == "Redis connection failed")
@@ -114,20 +114,20 @@ struct ClientTests {
     }
 
     /// Users qualify names with the module when their own code has a `Message` or `Severity` too.
-    /// That only works while the module (`HonkMe`) and the client class (`Honk`) have different
+    /// That only works while the module (`HonkHonk`) and the client class (`Honk`) have different
     /// names: in a module named `Honk`, `Honk.Message` would look for a member of the class.
     @Test func moduleQualifiedNamesResolve() async throws {
         MockURLProtocol.script([.accepted()])
-        let honk: HonkMe.Honk = try mockClient()
-        let message: HonkMe.Message = HonkMe.Message("Someone bought 3 rubber chickens", severity: HonkMe.Severity.beep)
+        let honk: HonkHonk.Honk = try mockClient()
+        let message: HonkHonk.Message = HonkHonk.Message("Someone bought 3 rubber chickens", severity: HonkHonk.Severity.beep)
         try await honk.honk(message)
         do {
-            try await honk.honk(HonkMe.Message(""))
+            try await honk.honk(HonkHonk.Message(""))
             Issue.record("an empty message must not be sent")
-        } catch let error as HonkMe.HonkError {
+        } catch let error as HonkHonk.HonkError {
             #expect(error.failure?.isLocal == true)
         }
-        #expect(HonkMe.Honk.version == Honk.version)
+        #expect(HonkHonk.Honk.version == Honk.version)
     }
 
     @Test func retriesReuseTheIdempotencyKeyAndBody() async throws {

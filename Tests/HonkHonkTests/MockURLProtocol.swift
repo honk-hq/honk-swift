@@ -1,5 +1,5 @@
 import Foundation
-@testable import HonkMe
+@testable import HonkHonk
 
 #if canImport(FoundationNetworking)
     import FoundationNetworking

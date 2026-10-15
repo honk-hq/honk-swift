@@ -28,7 +28,7 @@ jobs:
         run: |
           v="${GITHUB_REF_NAME#v}"
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::tag $GITHUB_REF_NAME is not vX.Y.Z"; exit 1; }
-          actual="$(sed -nE 's/^ *public static let version = "([^"]+)"/\1/p' Sources/HonkMe/Honk.swift)"
+          actual="$(sed -nE 's/^ *public static let version = "([^"]+)"/\1/p' Sources/HonkHonk/Honk.swift)"
           [ "$actual" = "$v" ] || { echo "::error::Honk.swift has version = \"$actual\" but the tag is $GITHUB_REF_NAME"; exit 1; }
           grep -qF "## [$v]" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## [$v]' section"; exit 1; }
           echo "version=$v" >> "$GITHUB_OUTPUT"

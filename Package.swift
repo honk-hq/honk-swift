@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "HonkMe",
+    name: "HonkHonk",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
     ],
     products: [
-        .library(name: "HonkMe", targets: ["HonkMe"]),
+        .library(name: "HonkHonk", targets: ["HonkHonk"]),
     ],
     targets: [
-        .target(name: "HonkMe"),
-        .testTarget(name: "HonkMeTests", dependencies: ["HonkMe"]),
+        .target(name: "HonkHonk"),
+        .testTarget(name: "HonkHonkTests", dependencies: ["HonkHonk"]),
     ],
     swiftLanguageModes: [.v6]
 )

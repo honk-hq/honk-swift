@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import HonkMe
+@testable import HonkHonk
 
 /// Runs against a real Honk server when HONK_URL and HONK_KEY are set (see ../../README.md,
 /// "Integration tests"); skipped otherwise.
