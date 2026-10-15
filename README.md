@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/honk-me/honk-swift/actions/workflows/ci.yml/badge.svg)](https://github.com/honk-me/honk-swift/actions/workflows/ci.yml)
 
-Official Swift client for [Honk](https://honk-me.app), the inbox that turns events from your
+Official Swift client for [Honk](https://honk-honk.app), the inbox that turns events from your
 apps, scripts, cron jobs and CI into calm, grouped push notifications on your phone.
 
 ```swift
@@ -41,7 +41,7 @@ it, so your phone tells one short story instead of raising two alarms.
 
 The import stays `import HonkMe`: `HonkMe` is the module, `Honk` is the client type inside it.
 In Xcode: *File → Add Package Dependencies…* and paste `https://github.com/honk-me/honk-swift`.
-Create a project and an ingestion key at [honk-me.app](https://honk-me.app). Its
+Create a project and an ingestion key at [honk-honk.app](https://honk-honk.app). Its
 *Integrations* page generates ready-to-paste code for this package.
 
 ## Quick start
@@ -239,7 +239,7 @@ matching it; the tag is the release for SwiftPM (see `CHANGELOG.md`).
 
 ## Links
 
-- [honk-me.app](https://honk-me.app): the Honk inbox (web, iPhone).
+- [honk-honk.app](https://honk-honk.app): the Honk inbox (web, iPhone).
 - Other SDKs: [Node.js](https://github.com/honk-me/honk-node),
   [PHP / Laravel](https://github.com/honk-me/honk-php), [Go + CLI](https://github.com/honk-me/honk-go),
   [Kotlin / Java](https://github.com/honk-me/honk-kotlin).
