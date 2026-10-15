@@ -7,7 +7,7 @@ All notable changes to the `HonkHonk` Swift package are documented here. The for
 ## [0.4.0] - 2026-10-15
 
 ### Changed
-- The module and product are now `HonkHonk` (`import HonkHonk`), at github.com/honkhonk/swift.
+- The module and product are now `HonkHonk` (`import HonkHonk`), at github.com/honkhonk/honk-swift.
 
 ## [0.3.0] - 2026-10-14
 
