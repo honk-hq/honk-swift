@@ -101,7 +101,7 @@ public enum MetadataValue: Sendable, Equatable, Codable, ExpressibleByStringLite
     }
 }
 
-/// A button on a message: `Action(title: "Call Emily", url: "tel:+15550134")`. Honk never opens
+/// A button on a message: `Action(title: "Call Maria", url: "tel:+15550134")`. Honk never opens
 /// the URL; the phone does, when you tap the button.
 public struct Action: Sendable, Equatable, Hashable, Codable {
     /// 1–40 characters, one line, shown as sent.

@@ -175,10 +175,10 @@ them; the phone does when you tap one: Mail for `mailto:`, the Phone app for `te
 `sms:`, Safari for `https://`.
 
 ```swift
-try await honk.light("New quote request", "Emily Carter asked for a quote: 3 rooms, 2 bathrooms") {
+try await honk.light("New quote request", "Maria Tudor asked for a quote: 3 rooms, 2 bathrooms") {
     $0.groupKey = "requests/4812"
     $0.actions = [
-        Action(title: "Reply", url: "mailto:emily@example.com?subject=Your%20quote"),
+        Action(title: "Reply", url: "mailto:maria@example.com?subject=Your%20quote"),
         Action(title: "Call", url: "tel:+15550134"),
     ]
 }
