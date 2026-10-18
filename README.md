@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/honk-hq/honk-swift/actions/workflows/ci.yml/badge.svg)](https://github.com/honk-hq/honk-swift/actions/workflows/ci.yml)
 
-Official Swift client for [Honk](https://honk-honk.app), the inbox that turns events from your
+Official Swift client for [Honk! Honk!](https://honk-honk.app), the inbox that turns events from your
 apps, scripts, cron jobs and CI into calm, grouped push notifications on your phone.
 
 ```swift
@@ -28,7 +28,7 @@ it, so your phone tells one short story instead of raising two alarms.
 > project, and anything shipped inside an app can be extracted. **Never embed it in an iOS,
 > macOS or other client app.** Use this package where the key stays private: server-side Swift
 > (Vapor, Hummingbird), macOS tools and agents you run yourself, CLIs and CI. A client app that
-> needs to notify you should call your own backend, which then calls Honk.
+> needs to notify you should call your own backend, which then calls Honk! Honk!
 
 ## Install
 
@@ -149,7 +149,7 @@ try await honk.honk(message, idempotencyKey: "redis-down-2026-10-03")
 | `ttlSeconds` | push lifetime 60–86400 (default 3600) |
 | `sourceSequence` | `Int64`, 0 … 2^53-1, needs `groupKey` |
 
-nil and empty optional fields are omitted. A returned `Accepted` means Honk **durably stored**
+nil and empty optional fields are omitted. A returned `Accepted` means Honk! Honk! **durably stored**
 the message (202), not that a push was delivered or read.
 
 Helpers take the title, the message, an optional idempotency key and a closure that edits the
@@ -170,7 +170,7 @@ with `timeout` 5 s per attempt, `retries` 4, `deadline` 30 s, a `URLSessionConfi
 
 ## Actions
 
-Up to three buttons on a message, in display order (the first is the primary). Honk never opens
+Up to three buttons on a message, in display order (the first is the primary). Honk! Honk! never opens
 them; the phone does when you tap one: Mail for `mailto:`, the Phone app for `tel:`, Messages for
 `sms:`, Safari for `https://`.
 
@@ -192,7 +192,7 @@ Anything else (`http:`, `javascript:`, app schemes) is rejected as `actions[i].u
 ## Retries and idempotency, guaranteed
 
 - Every send carries an `Idempotency-Key`: yours, or a fresh UUIDv7 (`UUIDv7.make()`). **The same
-  key is reused on every retry.** Within 24 h Honk answers a replay with the original id and
+  key is reused on every retry.** Within 24 h Honk! Honk! answers a replay with the original id and
   `duplicate == true`, so a lost response never creates a second message.
 - Only network errors, timeouts, `429` and `5xx` are retried, with exponential backoff and full
   jitter (`random(0, min(8 s, 0.5 s·2ⁿ))`), never sooner than the server's `Retry-After`.
@@ -239,7 +239,7 @@ matching it; the tag is the release for SwiftPM (see `CHANGELOG.md`).
 
 ## Links
 
-- [honk-honk.app](https://honk-honk.app): the Honk inbox (web, iPhone).
+- [honk-honk.app](https://honk-honk.app): the Honk! Honk! inbox (web, iPhone).
 - Other SDKs: [Node.js](https://github.com/honk-hq/node),
   [PHP / Laravel](https://github.com/honk-hq/php), [Go + CLI](https://github.com/honk-hq/go),
   [Kotlin / Java](https://github.com/honk-hq/kotlin).

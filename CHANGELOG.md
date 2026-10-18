@@ -4,6 +4,11 @@ All notable changes to the `HonkHonk` Swift package are documented here. The for
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- The README calls the product Honk! Honk!; the package, the module and the API are unchanged.
+
 ## [0.4.0] - 2026-10-15
 
 ### Changed
