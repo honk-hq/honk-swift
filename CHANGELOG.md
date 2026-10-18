@@ -6,6 +6,8 @@ All notable changes to the `HonkHonk` Swift package are documented here. The for
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-18
+
 ### Changed
 - The README calls the product Honk! Honk!; the package, the module and the API are unchanged.
 

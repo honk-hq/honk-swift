@@ -20,7 +20,7 @@ import Foundation
 /// The ingestion key is a server-side secret: use this package in server-side Swift (Vapor,
 /// Hummingbird), macOS tools and CLIs, never inside an app you ship to users.
 public final class Honk: Sendable {
-    public static let version = "0.4.0"
+    public static let version = "0.4.1"
 
     /// Base URL of the Honk server.
     public let url: URL
