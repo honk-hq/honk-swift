@@ -197,44 +197,44 @@ public final class Honk: Sendable {
     }
 
     /// Uh-oh: a problem for `groupKey`. The same method as `problem(groupKey:…)`: opens or
-    /// continues the group's incident, a long honk (error) by default.
+    /// continues the group's incident, a Long message (error) by default.
     @discardableResult
     public func uhoh(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await problem(groupKey: groupKey, title, message, idempotencyKey: idempotencyKey, configure)
     }
 
     /// Phew: a recovery for `groupKey`. The same method as `recovery(groupKey:…)`: closes the
-    /// group's open incident, a beep (success) by default.
+    /// group's open incident, a Beep message (success) by default.
     @discardableResult
     public func phew(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await recovery(groupKey: groupKey, title, message, idempotencyKey: idempotencyKey, configure)
     }
 
-    /// A light honk (info).
+    /// A Light message (info).
     @discardableResult
     public func light(_ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await send(.info, title, message, idempotencyKey, configure)
     }
 
-    /// A beep-beep (success).
+    /// A Beep message (success).
     @discardableResult
     public func beep(_ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await send(.success, title, message, idempotencyKey, configure)
     }
 
-    /// A loud honk (warning).
+    /// A Loud message (warning).
     @discardableResult
     public func loud(_ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await send(.warning, title, message, idempotencyKey, configure)
     }
 
-    /// A long honk (error; pushes at least as high priority).
+    /// A Long message (error; pushes at least as high priority).
     @discardableResult
     public func long(_ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await send(.error, title, message, idempotencyKey, configure)
     }
 
-    /// A blast (critical; pushes at least as high priority).
+    /// A Blast message (critical; pushes at least as high priority).
     @discardableResult
     public func blast(_ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await send(.critical, title, message, idempotencyKey, configure)

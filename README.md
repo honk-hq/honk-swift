@@ -58,15 +58,18 @@ throws `HonkError.invalidConfiguration` for a missing or malformed URL or key.
 
 ## The Honk scale
 
-Every severity has a horn name. Use either; the SDK always sends the canonical value.
+Five levels. The Honk app shows them by their standard names (Info, Success, Warning, Error,
+Critical); people who prefer horn sounds can switch on the Honk names (Light, Beep, Loud, Long,
+Blast) with the "Honk names for levels" switch in Settings. The SDK takes both: the canonical values and the
+Honk names as input aliases, in any case, and always sends the canonical value.
 
-| Horn | Severity | Method | Value |
-|---|---|---|---|
-| light honk | `light` (info) | `honk.light(title, message)` | `Severity.light` |
-| beep-beep | `beep` (success) | `honk.beep(…)` | `Severity.beep` |
-| loud honk | `loud` (warning) | `honk.loud(…)` | `Severity.loud` |
-| long honk | `long` (error) | `honk.long(…)` | `Severity.long` |
-| blast | `blast` (critical) | `honk.blast(…)` | `Severity.blast` |
+| Level | Honk name | Severity | Method | Value |
+|---|---|---|---|---|
+| Info | Light | `light` (info) | `honk.light(title, message)` | `Severity.light` |
+| Success | Beep | `beep` (success) | `honk.beep(…)` | `Severity.beep` |
+| Warning | Loud | `loud` (warning) | `honk.loud(…)` | `Severity.loud` |
+| Error | Long | `long` (error) | `honk.long(…)` | `Severity.long` |
+| Critical | Blast | `blast` (critical) | `honk.blast(…)` | `Severity.blast` |
 
 `Severity.loud == .warning`; `Severity(parsing: "LOUD")` accepts horn and canonical names in any
 case. `long` and `blast` push at least as high priority. `info`, `success`, `warning`, `error`
@@ -157,8 +160,8 @@ message:
 
 ```swift
 try await honk.loud("Disk 91%", "/var on app-01") { $0.groupKey = "disk/app-01/var" }
-try await honk.uhoh(groupKey: "db/backup", "Backup failed", "pg_dump exited with 1")   // a problem: a long honk by default
-try await honk.phew(groupKey: "db/backup", "Backup OK", "pg_dump finished in 41 s")    // its recovery: a beep by default
+try await honk.uhoh(groupKey: "db/backup", "Backup failed", "pg_dump exited with 1")   // a problem: a Long message by default
+try await honk.phew(groupKey: "db/backup", "Backup OK", "pg_dump finished in 41 s")    // its recovery: a Beep message by default
 ```
 
 `send`, `problem` and `recovery` still work: they are `honk`, `uhoh` and `phew` under their 0.2

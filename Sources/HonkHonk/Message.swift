@@ -7,15 +7,15 @@ import Foundation
 public enum Severity: String, Sendable, CaseIterable, Codable {
     case info, success, warning, error, critical
 
-    /// A light honk.
+    /// A Light message.
     public static let light: Severity = .info
-    /// A beep-beep.
+    /// A Beep message.
     public static let beep: Severity = .success
-    /// A loud honk.
+    /// A Loud message.
     public static let loud: Severity = .warning
-    /// A long honk.
+    /// A Long message.
     public static let long: Severity = .error
-    /// A blast.
+    /// A Blast message.
     public static let blast: Severity = .critical
 
     /// Horn name → canonical severity.
