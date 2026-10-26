@@ -6,6 +6,31 @@ All notable changes to the `HonkHonk` Swift package are documented here. The for
 
 ## [Unreleased]
 
+### Added
+- `Accepted.warnings`: what the server corrected before accepting the message (`Warning` with `field`,
+  `code`, `message`; codes `truncated`, `normalized`, `ignored`, `clamped`, `downgraded`, `hashed`),
+  empty when nothing. An optional `onWarnings` closure on `Honk(…)` and `Honk.fromEnvironment(…)` is
+  called after a send that has any.
+- A title-only message: `Message(title: "Deploy finished")` (`message` defaults to `""`); a
+  message or a title is required.
+
+### Changed
+- **Breaking:** the library is a thin wrapper of the "deliver first" server (contracts/API.md
+  §5.1). It no longer checks field contents (lengths, enums, URLs, actions, metadata, TTL,
+  `source_sequence`, the 16 KiB body): the server shortens or leaves out what it cannot use and
+  accepts the message with a warning, and refuses only what it cannot deliver. Before sending,
+  only a missing message and title (and an Idempotency-Key a header cannot carry) throw
+  `HonkError.validation` with `isLocal`.
+- `uhoh`/`phew`/`problem`/`recovery` take an optional `groupKey`:
+  recoveries and `sourceSequence` no longer need one; without one, messages group by title.
+- `HonkError.description` ends with the server's request id (`[request req_…]`).
+- Non-finite metadata numbers (`.nan`, infinities) are sent as text instead of failing the send.
+- The docs say that the level alone decides how the push interrupts, and that `.urgent` from a key
+  without "allow urgent" is sent as `.high` (it used to be `403 priority_not_allowed`).
+
+### Removed
+- **Breaking:** the `validate:` parameter and `Honk.validates`, and the `Limits` enum.
+
 ## [0.4.1] - 2026-10-18
 
 ### Changed

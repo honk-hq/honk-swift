@@ -1,11 +1,10 @@
 import Foundation
 
-/// One invalid field, from the server (`error.fields[]`) or local validation.
+/// One field the server refused (`error.fields[]`), or the missing message/title found before sending.
 public struct FieldError: Sendable, Equatable, Codable {
     /// Wire name: `group_key`, `metadata.region`, `Idempotency-Key`, `body`, …
     public let field: String
-    /// `required`, `too_long`, `too_short`, `invalid_enum`, `invalid_format`, `out_of_range`,
-    /// `not_allowed`, `requires_group_key`, …
+    /// `required`, `invalid_enum`, `invalid_format`, `invalid_utf8`, `too_long`, …
     public let code: String
     public let message: String?
 
@@ -26,9 +25,12 @@ public struct FieldError: Sendable, Equatable, Codable {
 public enum HonkError: Error, Sendable, CustomStringConvertible, LocalizedError {
     /// The URL or key passed to `Honk(url:key:)` is missing or malformed.
     case invalidConfiguration(String)
-    /// The message is invalid: rejected locally (`isLocal`) or by the server (400, 413, 415, 422).
+    /// The server refused the message (400, 413, 415, 422: invalid JSON, a body over 16 KiB, an
+    /// unknown field, an invalid `event_type`, …), or it has neither a message nor a title
+    /// (`isLocal`: nothing was sent). The server corrects everything else and reports it in
+    /// `Accepted.warnings` instead.
     case validation(Failure)
-    /// 401/403: invalid or revoked key, `priority_not_allowed`, suspended project or workspace.
+    /// 401/403: invalid or revoked key, suspended project or workspace.
     case auth(Failure)
     /// 429 after retries: `quota_exceeded` (daily, until UTC midnight) or `rate_limited`. See `retryAfter`.
     case quota(Failure)
@@ -50,9 +52,10 @@ public enum HonkError: Error, Sendable, CustomStringConvertible, LocalizedError 
         /// API error code (`invalid_key`, `quota_exceeded`, …) or `network_error` / `timeout` / `validation_failed`.
         public var code: String?
         public var message: String
-        /// Every invalid field, for `.validation`.
+        /// Every refused field, for `.validation`.
         public var fields: [FieldError]
-        /// True when the SDK rejected the message before sending anything.
+        /// True when nothing was sent (no message and no title, or an Idempotency-Key a header
+        /// cannot carry).
         public var isLocal: Bool
         public var requestID: String?
         /// The Idempotency-Key that was used; retry later with it to stay duplicate-free.
@@ -109,6 +112,7 @@ public enum HonkError: Error, Sendable, CustomStringConvertible, LocalizedError 
             if !f.fields.isEmpty {
                 text += " (" + f.fields.map { "\($0.field) \($0.message ?? $0.code)" }.joined(separator: "; ") + ")"
             }
+            if let requestID = f.requestID { text += " [request \(requestID)]" }
             return text
         }
     }

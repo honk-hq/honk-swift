@@ -72,8 +72,9 @@ Honk names as input aliases, in any case, and always sends the canonical value.
 | Critical | Blast | `blast` (critical) | `honk.blast(…)` | `Severity.blast` |
 
 `Severity.loud == .warning`; `Severity(parsing: "LOUD")` accepts horn and canonical names in any
-case. `long` and `blast` push at least as high priority. `info`, `success`, `warning`, `error`
-and `critical` remain as synonyms.
+case. The level alone decides how the push interrupts: Info and Success normal, Warning and Error
+high, Critical time-sensitive (it breaks through Focus). `info`, `success`, `warning`, `error` and
+`critical` remain as synonyms.
 
 ## Recipe: notify me when a customer asks for something (Vapor)
 
@@ -92,9 +93,8 @@ func routes(_ app: Application, honk: Honk) {
         // Message is Sendable: build it here, send it off the request path.
         let message = Message(
             "\(quote.name) (\(quote.company)) asked: \(quote.body.prefix(2000))",
-            title: "New request: \(quote.subject)".prefix(150).description,
+            title: "New request: \(quote.subject)",                    // the server shortens what is too long
             severity: .light,
-            priority: .high,                                           // push right away
             category: .customers,
             channel: "requests",
             groupKey: "requests/\(id)",                                // one group per request
@@ -119,13 +119,14 @@ Create the `Honk` once at startup and share it: it is `Sendable` and owns a keep
 Messages with the same `groupKey` (per project, environment, source and channel) form one group:
 the first one pushes, repeats update it calmly instead of buzzing again. Use one key per customer
 request (`requests/<id>`), and a shared key only for repeats of the same problem
-(`queue/failed-jobs`). `uhoh`/`phew` pairs need a `groupKey`.
+(`queue/failed-jobs`). The key is optional: without one, messages group by their title (pass
+`groupKey: nil` to `uhoh`/`phew` for that).
 
 ## Sending
 
 ```swift
 @discardableResult
-func honk(_ message: Message, idempotencyKey: String? = nil) async throws -> Accepted   // id, duplicate, receivedAt
+func honk(_ message: Message, idempotencyKey: String? = nil) async throws -> Accepted   // id, duplicate, receivedAt, warnings
 ```
 
 ```swift
@@ -137,23 +138,25 @@ try await honk.honk(message, idempotencyKey: "redis-down-2026-10-03")
 
 | Field | Notes |
 |---|---|
-| `message` | **required**, 1–8192 bytes UTF-8, line breaks allowed |
-| `title` | ≤ 160 characters, one line; default: first line of `message` |
-| `severity` | `.light` `.beep` `.loud` `.long` `.blast` (or `.info` … `.critical`) |
-| `priority` | `.low` `.normal` `.high` `.urgent` (`urgent` needs a key with *allow urgent*) |
+| `message` | text, line breaks allowed; kept up to 8192 bytes UTF-8 |
+| `title` | one line, kept up to 160 characters; default: first line of `message`. **A `message` or a `title` is required** (`Message(title: "Deploy finished")`) |
+| `severity` | the level: `.light` `.beep` `.loud` `.long` `.blast` (or `.info` … `.critical`); decides how loud the push is |
+| `priority` | `.low` `.normal` `.high` `.urgent`, stored for compatibility (only `.low` still matters: a silent push below `.long`); `.urgent` from a key without *allow urgent* becomes `.high` |
 | `category` | `.infrastructure` `.security` `.backups` `.deployments` `.payments` `.customers` `.sales` `.automation` `.personal` `.other` |
 | `source` / `environment` / `channel` | ≤ 64 / 32 / 64 characters; default `api` / `default` / `general` or `Defaults` |
-| `groupKey` | ≤ 128 characters |
-| `eventType` | `.event` `.problem` `.recovery` (`recovery` needs `groupKey`) |
+| `groupKey` | optional; without it messages group by title; longer than 128 characters is hashed |
+| `eventType` | `.event` `.problem` `.recovery` |
 | `occurredAt` | `Date`, sent as UTC RFC 3339 with milliseconds |
 | `url` / `imageURL` | `https://` only, no credentials (`imageURL`: no `#fragment`; fetched by the server afterwards) |
 | `actions` | up to 3 `Action(title:url:)` buttons, see [Actions](#actions) |
 | `metadata` | `[String: MetadataValue]`, literals work; ≤ 16 keys `[A-Za-z0-9_.-]{1,64}`, strings ≤ 512 characters |
 | `ttlSeconds` | push lifetime 60–86400 (default 3600) |
-| `sourceSequence` | `Int64`, 0 … 2^53-1, needs `groupKey` |
+| `sourceSequence` | `Int64`, 0 … 2^53-1, orders problems and recoveries |
 
-nil and empty optional fields are omitted. A returned `Accepted` means Honk! Honk! **durably stored**
-the message (202), not that a push was delivered or read.
+nil and empty optional fields are omitted. The library does not check the other fields: the
+server delivers first, so a value that is too long is shortened and one it cannot use is left out,
+and the message is accepted with a [warning](#warnings). A returned `Accepted` means Honk! Honk!
+**durably stored** the message (202), not that a push was delivered or read.
 
 Helpers take the title, the message, an optional idempotency key and a closure that edits the
 message:
@@ -167,9 +170,27 @@ try await honk.phew(groupKey: "db/backup", "Backup OK", "pg_dump finished in 41 
 `send`, `problem` and `recovery` still work: they are `honk`, `uhoh` and `phew` under their 0.2
 names, with no deprecation warning.
 
-Options: `Honk(url:key:timeout:retries:deadline:defaults:validate:backoff:configuration:userAgent:)`
-with `timeout` 5 s per attempt, `retries` 4, `deadline` 30 s, a `URLSessionConfiguration`
-(proxies; redirects are never followed) and `validate: false` to leave all checks to the server.
+Options: `Honk(url:key:timeout:retries:deadline:defaults:backoff:configuration:userAgent:onWarnings:)`
+with `timeout` 5 s per attempt, `retries` 4, `deadline` 30 s and a `URLSessionConfiguration`
+(proxies; redirects are never followed).
+
+## Warnings
+
+When the server corrects something it still accepts the message (`202`), and says what it did:
+`Accepted.warnings` is an array of `Warning` (`field`, `code`, `message`), empty when nothing was
+changed. Codes: `truncated`, `normalized`, `ignored`, `clamped`, `downgraded`, `hashed`. They are
+never thrown; log them and fix the sender when convenient.
+
+```swift
+let accepted = try await honk.honk(Message("Imported 1 204 rows", ttlSeconds: 5))
+for warning in accepted.warnings { print(warning) }   // ttl_seconds clamped: …
+
+let honk = try Honk(url: url, key: key, onWarnings: { warnings, accepted in
+    for warning in warnings { logger.warning("honk \(accepted.id): \(warning)") }
+})
+```
+
+`onWarnings` runs only for a send with warnings.
 
 ## Actions
 
@@ -190,7 +211,8 @@ try await honk.light("New quote request", "Maria Tudor asked for a quote: 3 room
 A title is 1–40 characters on one line, shown as sent. A URL is at most 2048 bytes without
 spaces: `https://` (no credentials), `mailto:` with one address and an optional
 `?subject=…&body=…`, `tel:` with a number, or `sms:` with a number and an optional `?body=…`.
-Anything else (`http:`, `javascript:`, app schemes) is rejected as `actions[i].url`.
+The server leaves out an action it cannot use (`http:`, `javascript:`, app schemes) with an
+`ignored` warning on `actions[i].url`, and still delivers the message.
 
 ## Retries and idempotency, guaranteed
 
@@ -208,11 +230,14 @@ Anything else (`http:`, `javascript:`, app schemes) is rejected as `actions[i].u
 
 `HonkError` cases carry a `Failure` (`status`, `code`, `message`, `fields`, `isLocal`,
 `requestID`, `idempotencyKey`, `attempts`, `retryAfter`); `error.isRetryable` tells what to do.
+`error.description` names the status, the code, the server's message, every refused field and the
+request id, e.g. `Honk 422 validation_failed: … (event_type must be one of event, problem,
+recovery) [request req_…]`.
 
 | Case | When | What to do |
 |---|---|---|
-| `.validation` | rejected locally (`isLocal`) or `400`/`413`/`415`/`422`; `fields` lists every problem | fix the message |
-| `.auth` | `401 invalid_key`, `403 priority_not_allowed`, `project_suspended`, `workspace_suspended` | fix the key or the priority |
+| `.validation` | the server refused it (`400 invalid_json`, `413`, `415`, `422 unknown_field`, an invalid `event_type`); `fields` lists every refused field. `isLocal`: no message and no title, nothing sent | fix the message |
+| `.auth` | `401 invalid_key`, `403 project_suspended`, `workspace_suspended` | fix the key |
 | `.quota` | `429 quota_exceeded` (daily) or `rate_limited`, after retries | retry after `retryAfter` |
 | `.conflict` | `409 idempotency_conflict`: same key, different payload | new key or original payload |
 | `.network` / `.timeout` | unreachable / no answer before the deadline | retry later, same key |

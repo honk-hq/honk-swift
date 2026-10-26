@@ -10,8 +10,8 @@ enum Step: Sendable {
     case respond(status: Int, headers: [String: String] = [:], body: String = "", delay: Duration = .zero)
     case fail(URLError.Code)
 
-    static func accepted(duplicate: Bool = false) -> Step {
-        .respond(status: 202, body: #"{"id":"msg_01k6h3w4z5x6y7z8a9b0c1d2e3","status":"accepted","duplicate":\#(duplicate),"received_at":"2026-10-02T21:10:00.123Z"}"#)
+    static func accepted(duplicate: Bool = false, warnings: String = "[]") -> Step {
+        .respond(status: 202, body: #"{"id":"msg_01k6h3w4z5x6y7z8a9b0c1d2e3","status":"accepted","duplicate":\#(duplicate),"received_at":"2026-10-02T21:10:00.123Z","warnings":\#(warnings)}"#)
     }
 
     static func error(_ status: Int, _ code: String, retryAfter: String? = nil, extra: String = "") -> Step {
@@ -115,10 +115,11 @@ func mockConfiguration() -> URLSessionConfiguration {
 }
 
 func mockClient(
-    timeout: Duration = .seconds(5), retries: Int = 4, deadline: Duration = .seconds(30), defaults: Defaults = Defaults(), validate: Bool = true
+    timeout: Duration = .seconds(5), retries: Int = 4, deadline: Duration = .seconds(30), defaults: Defaults = Defaults(),
+    onWarnings: (@Sendable ([Warning], Accepted) -> Void)? = nil
 ) throws -> Honk {
     try Honk(
         url: "https://honk.test", key: testKey, timeout: timeout, retries: retries, deadline: deadline, defaults: defaults,
-        validate: validate, backoff: Backoff(base: .milliseconds(1), max: .milliseconds(5)), configuration: mockConfiguration()
+        backoff: Backoff(base: .milliseconds(1), max: .milliseconds(5)), configuration: mockConfiguration(), onWarnings: onWarnings
     )
 }

@@ -222,7 +222,7 @@ struct ClientTests {
         (Step.error(422, "validation_failed", extra: #","fields":[{"field":"severity","code":"invalid_enum","message":"must be one of"}]"#), "validation", "validation_failed"),
         (Step.error(413, "payload_too_large"), "validation", "payload_too_large"),
         (Step.error(401, "invalid_key"), "auth", "invalid_key"),
-        (Step.error(403, "priority_not_allowed"), "auth", "priority_not_allowed"),
+        (Step.error(403, "project_suspended"), "auth", "project_suspended"),
         (Step.error(409, "idempotency_conflict"), "conflict", "idempotency_conflict"),
         (Step.error(404, "not_found"), "http", "not_found"),
     ])
@@ -247,15 +247,105 @@ struct ClientTests {
         #expect(MockURLProtocol.requests.count == 1)
     }
 
-    @Test func validationErrorsExposeFields() async throws {
-        MockURLProtocol.script([.error(422, "validation_failed", extra: #","fields":[{"field":"image_url","code":"invalid_format","message":"must be https"}]"#)])
+    @Test func serverRefusalsExposeCodeFieldsAndRequestID() async throws {
+        MockURLProtocol.script([.error(422, "validation_failed", extra: #","fields":[{"field":"event_type","code":"invalid_enum","message":"must be one of event, problem, recovery"}]"#)])
         do {
             try await mockClient().send(Message("x"))
             Issue.record("expected an error")
         } catch let error as HonkError {
-            #expect(error.failure?.fields == [FieldError(field: "image_url", code: "invalid_format", message: "must be https")])
-            #expect(error.description.contains("image_url must be https"))
+            let f = try #require(error.failure)
+            #expect(f.fields == [FieldError(field: "event_type", code: "invalid_enum", message: "must be one of event, problem, recovery")])
+            #expect(f.code == "validation_failed" && f.requestID == "req_test" && !f.isLocal)
+            #expect(error.description == "Honk 422 validation_failed: validation_failed happened (event_type must be one of event, problem, recovery) [request req_test]")
         }
+        MockURLProtocol.script([.error(401, "invalid_key")])
+        do {
+            try await mockClient().send(Message("x"))
+            Issue.record("expected an error")
+        } catch let error as HonkError {
+            #expect(error.description == "Honk 401 invalid_key: invalid_key happened [request req_test]")
+        }
+    }
+
+    @Test func warningsAreReturnedAndPassedToOnWarnings() async throws {
+        let warnings = #"[{"field":"title","code":"truncated","message":"title was 212 characters; shortened to 160"},"#
+            + #"{"field":"actions[1].url","code":"ignored","message":"not an https, mailto, tel or sms URL; action left out"}]"#
+        let seen = Seen()
+        MockURLProtocol.script([.accepted(warnings: warnings), .accepted()])
+        let honk = try mockClient(onWarnings: { warnings, accepted in seen.append(warnings, accepted.id) })
+        let accepted = try await honk.send(Message("x"))
+        let expected = [
+            Warning(field: "title", code: "truncated", message: "title was 212 characters; shortened to 160"),
+            Warning(field: "actions[1].url", code: "ignored", message: "not an https, mailto, tel or sms URL; action left out"),
+        ]
+        #expect(accepted.warnings == expected)
+        #expect(accepted.warnings[0].description == "title truncated: title was 212 characters; shortened to 160")
+        #expect(seen.calls.count == 1 && seen.calls[0].0 == expected && seen.calls[0].1 == "msg_01k6h3w4z5x6y7z8a9b0c1d2e3")
+        #expect(try await honk.send(Message("y")).warnings.isEmpty)
+        #expect(seen.calls.count == 1)  // not called without warnings
+
+        // An older server without warnings, and an odd warning, still accept the message.
+        MockURLProtocol.script([.respond(status: 202, body: #"{"id":"msg_old","duplicate":false}"#)])
+        #expect(try await mockClient().send(Message("x")).warnings.isEmpty)
+        MockURLProtocol.script([.respond(status: 202, body: #"{"id":"msg_odd","warnings":[{"code":"truncated"}]}"#)])
+        #expect(try await mockClient().send(Message("x")).warnings == [Warning(field: "", code: "truncated", message: "")])
+    }
+
+    @Test func fieldContentsAreSentUnchecked() async throws {
+        MockURLProtocol.script([.accepted()])
+        let honk = try mockClient()
+        try await honk.send(
+            Message(
+                "bell\u{07}", title: String(repeating: "t", count: 200), groupKey: String(repeating: "g", count: 200), url: "http://example.com",
+                actions: [Action(title: "Open", url: "javascript:alert(1)"), Action(title: "a", url: "tel:1"), Action(title: "b", url: "tel:2"), Action(title: "c", url: "tel:3")],
+                metadata: ["bad key": 1, "n": .double(.nan)], ttlSeconds: 5
+            ), idempotencyKey: "k-1")
+        try await honk.send(Message("recovered", eventType: .recovery, sourceSequence: 3))
+        try await honk.phew(groupKey: nil, "Backup OK", "fine")
+        let r = MockURLProtocol.requests
+        #expect(r.count == 3)
+        #expect(r[0].json["title"] as? String == String(repeating: "t", count: 200))
+        #expect(r[0].json["ttl_seconds"] as? Int == 5 && r[0].json["url"] as? String == "http://example.com")
+        #expect(r[0].json["metadata"] as? NSDictionary == ["bad key": 1, "n": "NaN"])
+        #expect((r[0].json["actions"] as? [Any])?.count == 4)
+        #expect(r[1].json as NSDictionary == ["message": "recovered", "event_type": "recovery", "source_sequence": 3])
+        #expect(r[2].json as NSDictionary == ["title": "Backup OK", "message": "fine", "severity": "success", "event_type": "recovery"])
+    }
+
+    @Test func aMessageOrATitleIsEnoughNeitherIsRefusedBeforeSending() async throws {
+        MockURLProtocol.script([.accepted()])
+        let honk = try mockClient()
+        try await honk.send(Message(title: "Deploy finished"))
+        try await honk.beep("Title only", "")
+        #expect(MockURLProtocol.requests.map { $0.json as NSDictionary } == [["title": "Deploy finished"], ["title": "Title only", "severity": "success"]])
+        for message in [Message(""), Message("  ", title: " ")] {
+            await #expect {
+                try await honk.send(message)
+            } throws: { error in
+                guard case HonkError.validation(let f) = error else { return false }
+                return f.isLocal && f.attempts == 0 && f.fields == [FieldError(field: "message", code: "required", message: "is required (send a message or a title)")]
+            }
+        }
+        #expect(MockURLProtocol.requests.count == 2)
+    }
+
+    @Test func idempotencyKeysAHeaderCannotCarry() async throws {
+        let honk = try Honk(url: "https://honk.example.com", key: testKey)
+        for key in ["", "has space", String(repeating: "x", count: 129), "ünicode"] {
+            await #expect {
+                try await honk.send(Message("x"), idempotencyKey: key)
+            } throws: { error in
+                (error as? HonkError)?.failure?.fields.first?.field == "Idempotency-Key" && (error as? HonkError)?.failure?.isLocal == true
+            }
+        }
+    }
+
+    @Test func multilineMessageAndLargeSequence() async throws {
+        MockURLProtocol.script([.accepted()])
+        try await mockClient().send(Message("line1\nline2\ttab\r\n", sourceSequence: (1 << 53) - 1))
+        let body = String(decoding: MockURLProtocol.requests[0].body, as: UTF8.self)
+        #expect(body.contains(#""source_sequence":9007199254740991"#))
+        #expect(body.contains(#""message":"line1\nline2\ttab\r\n""#))
     }
 
     @Test func proxyHTMLErrorIsRetriedThenReported() async throws {
@@ -276,13 +366,14 @@ struct ClientTests {
         #expect(MockURLProtocol.requests[0].header("Idempotency-Key") == "deploy-4812")
     }
 
-    @Test func validateFalseLeavesValueChecksToTheServer() async throws {
-        MockURLProtocol.script([.error(422, "validation_failed")])
-        await #expect(throws: HonkError.self) {
-            try await mockClient(validate: false).send(Message("x", ttlSeconds: 5))
-        }
-        #expect(MockURLProtocol.requests[0].json["ttl_seconds"] as? Int == 5)
-    }
+}
+
+/// Records `onWarnings` calls (the hook is `@Sendable`).
+final class Seen: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _calls: [([Warning], String)] = []
+    var calls: [([Warning], String)] { lock.withLock { _calls } }
+    func append(_ warnings: [Warning], _ id: String) { lock.withLock { _calls.append((warnings, id)) } }
 }
 
 @Suite struct ConfigurationTests {

@@ -9,9 +9,9 @@ import Testing
 struct IntegrationTests {
     let run = "swift-\(UUIDv7.make())"
 
-    func client(key: String? = nil, validate: Bool = true) throws -> Honk {
+    func client(key: String? = nil) throws -> Honk {
         let env = ProcessInfo.processInfo.environment
-        return try Honk(url: env["HONK_URL"]!, key: key ?? env["HONK_KEY"]!, defaults: Defaults(source: "sdk-swift-it", environment: "test"), validate: validate)
+        return try Honk(url: env["HONK_URL"]!, key: key ?? env["HONK_KEY"]!, defaults: Defaults(source: "sdk-swift-it", environment: "test"))
     }
 
     @Test func minimalMessageIsAccepted() async throws {
@@ -88,30 +88,21 @@ struct IntegrationTests {
         }
     }
 
-    @Test func urgentWithoutAllowUrgent() async throws {
-        do {
-            let accepted = try await client().send(Message("urgent \(run)", priority: .urgent))
-            #expect(accepted.id.hasPrefix("msg_"))  // the key allows urgent
-        } catch HonkError.auth(let f) {
-            #expect(f.status == 403 && f.code == "priority_not_allowed")
-        }
+    @Test func urgentWithoutAllowUrgentIsDowngraded() async throws {
+        let accepted = try await client().send(Message("urgent \(run)", priority: .urgent))
+        #expect(accepted.id.hasPrefix("msg_"))
+        // A key with "allow urgent" keeps it; any other key gets it as high, with a warning.
+        #expect(accepted.warnings.isEmpty || accepted.warnings.map { "\($0.field):\($0.code)" } == ["priority:downgraded"])
     }
 
-    @Test func serverSideValidationMapsFields() async throws {
-        do {
-            try await client(validate: false).send(Message("x", ttlSeconds: 5))
-            Issue.record("expected a validation error")
-        } catch HonkError.validation(let f) {
-            #expect(!f.isLocal && f.status == 422 && f.fields.map { "\($0.field):\($0.code)" } == ["ttl_seconds:out_of_range"])
-        }
+    @Test func theServerCorrectsWhatItCanAndSaysSo() async throws {
+        let message = Message("corrected \(run)", actions: [Action(title: "Call", url: "tel:+15550134"), Action(title: "Open", url: "javascript:alert(1)")], ttlSeconds: 5)
+        let accepted = try await client().send(message)
+        #expect(accepted.id.hasPrefix("msg_"))
+        #expect(accepted.warnings.map { "\($0.field):\($0.code)" }.sorted() == ["actions[1].url:ignored", "ttl_seconds:clamped"])
     }
 
-    @Test func serverSideActionValidationMapsFields() async throws {
-        do {
-            try await client(validate: false).send(Message("x", actions: [Action(title: "Call", url: "tel:+15550134"), Action(title: "Open", url: "javascript:alert(1)")]))
-            Issue.record("expected a validation error")
-        } catch HonkError.validation(let f) {
-            #expect(!f.isLocal && f.status == 422 && f.fields.map { "\($0.field):\($0.code)" } == ["actions[1].url:invalid_format"])
-        }
+    @Test func recoveryWithoutAGroupKey() async throws {
+        #expect(try await client().phew(groupKey: nil, "Recovered \(run)", "no group key needed").id.hasPrefix("msg_"))
     }
 }

@@ -28,8 +28,9 @@ public final class Honk: Sendable {
     public let retries: Int
     public let deadline: Duration
     public let defaults: Defaults
-    public let validates: Bool
     public let backoff: Backoff
+    /// Called with the server's corrections after an accepted send that has any.
+    public let onWarnings: (@Sendable (_ warnings: [Warning], _ accepted: Accepted) -> Void)?
     private let key: String
     private let session: URLSession
     private let userAgent: String
@@ -41,9 +42,10 @@ public final class Honk: Sendable {
     ///   - retries: retries after the first attempt (network errors, 429 and 5xx only).
     ///   - deadline: total budget of one send, waits included.
     ///   - defaults: source / environment / channel for messages that leave them unset.
-    ///   - validate: check messages locally before sending (the server always validates).
     ///   - configuration: the URLSession configuration (proxies, test protocols). Redirects are
     ///     never followed.
+    ///   - onWarnings: called after an accepted send that has `Accepted.warnings` (never for an
+    ///     empty list), e.g. `{ warnings, _ in warnings.forEach { logger.warning("Honk: \($0)") } }`.
     public init(
         url: String,
         key: String,
@@ -51,10 +53,10 @@ public final class Honk: Sendable {
         retries: Int = 4,
         deadline: Duration = .seconds(30),
         defaults: Defaults = Defaults(),
-        validate: Bool = true,
         backoff: Backoff = Backoff(),
         configuration: URLSessionConfiguration = .ephemeral,
-        userAgent: String? = nil
+        userAgent: String? = nil,
+        onWarnings: (@Sendable (_ warnings: [Warning], _ accepted: Accepted) -> Void)? = nil
     ) throws(HonkError) {
         var base = url.trimmingCharacters(in: .whitespacesAndNewlines)
         while base.hasSuffix("/") { base.removeLast() }
@@ -82,8 +84,8 @@ public final class Honk: Sendable {
         self.retries = retries
         self.deadline = deadline
         self.defaults = defaults
-        self.validates = validate
         self.backoff = backoff
+        self.onWarnings = onWarnings
         self.userAgent = "honk-swift/\(Honk.version)" + (userAgent.map { " \($0)" } ?? "")
         self.session = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
     }
@@ -99,7 +101,8 @@ public final class Honk: Sendable {
         timeout: Duration = .seconds(5),
         retries: Int = 4,
         deadline: Duration = .seconds(30),
-        configuration: URLSessionConfiguration = .ephemeral
+        configuration: URLSessionConfiguration = .ephemeral,
+        onWarnings: (@Sendable (_ warnings: [Warning], _ accepted: Accepted) -> Void)? = nil
     ) throws(HonkError) -> Honk {
         try Honk(
             url: environment["HONK_URL"] ?? "",
@@ -108,7 +111,8 @@ public final class Honk: Sendable {
             retries: retries,
             deadline: deadline,
             defaults: Defaults(source: environment["HONK_SOURCE"], environment: environment["HONK_ENVIRONMENT"], channel: environment["HONK_CHANNEL"]),
-            configuration: configuration
+            configuration: configuration,
+            onWarnings: onWarnings
         )
     }
 
@@ -116,12 +120,16 @@ public final class Honk: Sendable {
     /// push was delivered. Network errors, timeouts, 429 and 5xx are retried with the same
     /// Idempotency-Key until `retries` or `deadline` runs out.
     ///
+    /// Field contents are not checked here: the server shortens or leaves out what it cannot use
+    /// and accepts the message anyway, listing each correction in `Accepted.warnings` (also passed
+    /// to `onWarnings`). It refuses only what it cannot deliver (`HonkError.validation`).
+    ///
     /// - Parameter idempotencyKey: a stable key for this event (1–128 printable ASCII
     ///   characters), e.g. "request-4812". Default: a new UUIDv7, reused on every retry.
     /// - Throws: `HonkError`, or `CancellationError` when the task is cancelled.
     @discardableResult
     public func send(_ message: Message, idempotencyKey: String? = nil) async throws -> Accepted {
-        let body = try Wire.encode(message, defaults: defaults, validate: validates)
+        let body = try Wire.encode(message, defaults: defaults)
         let key = idempotencyKey ?? UUIDv7.make()
         guard Wire.validIdempotencyKey(key) else {
             throw Wire.localValidation([FieldError(field: "Idempotency-Key", code: "invalid_format", message: "use 1-128 printable ASCII characters without spaces, e.g. \"request-4812\"")])
@@ -147,7 +155,9 @@ public final class Honk: Sendable {
             do {
                 let (data, response) = try await perform(request, timeout: attemptTimeout)
                 if (200..<300).contains(response.statusCode) {
-                    return try Self.accepted(data, status: response.statusCode, key: key, attempts: attempt)
+                    let accepted = try Self.accepted(data, status: response.statusCode, key: key, attempts: attempt)
+                    if !accepted.warnings.isEmpty { onWarnings?(accepted.warnings, accepted) }
+                    return accepted
                 }
                 failure = Self.error(for: response, data: data, key: key, attempts: attempt)
             } catch let error as HonkError {
@@ -177,21 +187,23 @@ public final class Honk: Sendable {
     // MARK: Helpers
 
     /// A problem for `groupKey` (opens or continues its incident). Severity defaults to `.long` (error).
+    /// A nil `groupKey` groups by the title.
     @discardableResult
-    public func problem(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
+    public func problem(groupKey: String?, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         var m = Message(message, title: title, severity: .long)
         configure(&m)
-        m.groupKey = groupKey
+        if let groupKey { m.groupKey = groupKey }
         m.eventType = .problem
         return try await send(m, idempotencyKey: idempotencyKey)
     }
 
     /// A recovery for `groupKey` (closes its open incident). Severity defaults to `.beep` (success).
+    /// A nil `groupKey` groups by the title.
     @discardableResult
-    public func recovery(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
+    public func recovery(groupKey: String?, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         var m = Message(message, title: title, severity: .beep)
         configure(&m)
-        m.groupKey = groupKey
+        if let groupKey { m.groupKey = groupKey }
         m.eventType = .recovery
         return try await send(m, idempotencyKey: idempotencyKey)
     }
@@ -199,14 +211,14 @@ public final class Honk: Sendable {
     /// Uh-oh: a problem for `groupKey`. The same method as `problem(groupKey:…)`: opens or
     /// continues the group's incident, a Long message (error) by default.
     @discardableResult
-    public func uhoh(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
+    public func uhoh(groupKey: String?, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await problem(groupKey: groupKey, title, message, idempotencyKey: idempotencyKey, configure)
     }
 
     /// Phew: a recovery for `groupKey`. The same method as `recovery(groupKey:…)`: closes the
     /// group's open incident, a Beep message (success) by default.
     @discardableResult
-    public func phew(groupKey: String, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
+    public func phew(groupKey: String?, _ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await recovery(groupKey: groupKey, title, message, idempotencyKey: idempotencyKey, configure)
     }
 
@@ -228,13 +240,13 @@ public final class Honk: Sendable {
         try await send(.warning, title, message, idempotencyKey, configure)
     }
 
-    /// A Long message (error; pushes at least as high priority).
+    /// A Long message (error; a high-priority push).
     @discardableResult
     public func long(_ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await send(.error, title, message, idempotencyKey, configure)
     }
 
-    /// A Blast message (critical; pushes at least as high priority).
+    /// A Blast message (critical; a time-sensitive push).
     @discardableResult
     public func blast(_ title: String?, _ message: String, idempotencyKey: String? = nil, _ configure: (inout Message) -> Void = { _ in }) async throws -> Accepted {
         try await send(.critical, title, message, idempotencyKey, configure)
@@ -308,13 +320,25 @@ public final class Honk: Sendable {
             let duplicate: Bool?
             let received_at: String?
         }
+        /// Decoded on their own, so an odd warning never turns an accepted message into an error.
+        struct Warnings: Decodable {
+            struct Item: Decodable {
+                let field: String?
+                let code: String?
+                let message: String?
+            }
+            let warnings: [Item]?
+        }
         guard let body = try? JSONDecoder().decode(Body.self, from: data) else {
             throw .http(.init(status: status, message: "answer without a message id", idempotencyKey: key, attempts: attempts))
+        }
+        let warnings = ((try? JSONDecoder().decode(Warnings.self, from: data))?.warnings ?? []).map {
+            Warning(field: $0.field ?? "", code: $0.code ?? "", message: $0.message ?? "")
         }
         let received = body.received_at.flatMap { try? Date($0, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)) }
             ?? body.received_at.flatMap { try? Date($0, strategy: .iso8601) }
             ?? Date()
-        return Accepted(id: body.id, duplicate: body.duplicate ?? false, receivedAt: received)
+        return Accepted(id: body.id, duplicate: body.duplicate ?? false, receivedAt: received, warnings: warnings)
     }
 
     static func error(for response: HTTPURLResponse, data: Data, key: String, attempts: Int) -> HonkError {
