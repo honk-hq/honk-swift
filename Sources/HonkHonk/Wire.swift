@@ -71,9 +71,11 @@ enum Wire {
         date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true, timeZone: TimeZone(identifier: "UTC")!))
     }
 
-    /// 1–128 printable ASCII characters: what an HTTP header can carry and the server accepts.
-    static func validIdempotencyKey(_ key: String) -> Bool {
-        let bytes = Array(key.utf8)
-        return (1...128).contains(bytes.count) && bytes.allSatisfy { (0x21...0x7E).contains($0) }
+    /// Whether URLSession can send `value` as a header as given: no control characters (which
+    /// could break the request) and nothing beyond U+00FF (which URLSession sends as an empty
+    /// value). The server's own rules (an Idempotency-Key is 1–128 printable ASCII characters, a
+    /// valid key) come back as its 422 / 401.
+    static func sendableHeaderValue(_ value: String) -> Bool {
+        value.unicodeScalars.allSatisfy { $0.value <= 0xFF && $0.properties.generalCategory != .control }
     }
 }

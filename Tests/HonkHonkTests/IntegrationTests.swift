@@ -86,6 +86,22 @@ struct IntegrationTests {
         } catch HonkError.auth(let f) {
             #expect(f.status == 401 && f.code == "invalid_key")
         }
+        // A key without the honk_ prefix is sent too: the server refuses it.
+        do {
+            try await client(key: "hka_mobile").send(Message("x"))
+            Issue.record("expected an auth error")
+        } catch HonkError.auth(let f) {
+            #expect(f.status == 401 && f.code == "invalid_key" && !f.isLocal)
+        }
+    }
+
+    @Test func anIdempotencyKeyOutsideTheRuleIsTheServers422() async throws {
+        do {
+            try await client().send(Message("bad key \(run)"), idempotencyKey: "has space")
+            Issue.record("expected a validation error")
+        } catch HonkError.validation(let f) {
+            #expect(f.status == 422 && !f.isLocal && f.fields.first?.field == "Idempotency-Key" && f.fields.first?.code == "invalid_format")
+        }
     }
 
     @Test func urgentWithoutAllowUrgentIsDowngraded() async throws {

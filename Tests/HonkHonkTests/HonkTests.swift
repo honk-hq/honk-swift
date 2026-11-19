@@ -329,15 +329,34 @@ struct ClientTests {
         #expect(MockURLProtocol.requests.count == 2)
     }
 
-    @Test func idempotencyKeysAHeaderCannotCarry() async throws {
-        let honk = try Honk(url: "https://honk.example.com", key: testKey)
-        for key in ["", "has space", String(repeating: "x", count: 129), "ünicode"] {
+    @Test func idempotencyKeysAreLeftToTheServerUnlessUnsendable() async throws {
+        MockURLProtocol.script([.accepted()])
+        let honk = try mockClient()
+        for key in ["tab\tkey", "line\nbreak", "nul\0", "del\u{7F}", "euro €"] {
             await #expect {
                 try await honk.send(Message("x"), idempotencyKey: key)
             } throws: { error in
-                (error as? HonkError)?.failure?.fields.first?.field == "Idempotency-Key" && (error as? HonkError)?.failure?.isLocal == true
+                guard case HonkError.validation(let f) = error else { return false }
+                return f.isLocal && f.attempts == 0 && f.fields.first?.field == "Idempotency-Key" && f.fields.first?.code == "invalid_format"
             }
         }
+        #expect(MockURLProtocol.requests.isEmpty)
+        // Anything else is sent as given; the server answers 422 for what breaks its rule.
+        let long = String(repeating: "k", count: 129)
+        for key in ["has space", long, "ünicode"] {
+            try await honk.send(Message("x"), idempotencyKey: key)
+        }
+        #expect(MockURLProtocol.requests.map { $0.header("Idempotency-Key") } == ["has space", long, "ünicode"])
+
+        MockURLProtocol.script([.error(422, "validation_failed", extra: #","fields":[{"field":"Idempotency-Key","code":"invalid_format","message":"1-128 printable ASCII characters"}]"#)])
+        await #expect {
+            try await honk.send(Message("x"), idempotencyKey: "has space")
+        } throws: { error in
+            guard case HonkError.validation(let f) = error else { return false }
+            return !f.isLocal && f.status == 422 && f.attempts == 1
+                && f.fields == [FieldError(field: "Idempotency-Key", code: "invalid_format", message: "1-128 printable ASCII characters")]
+        }
+        #expect(MockURLProtocol.requests.count == 1)
     }
 
     @Test func multilineMessageAndLargeSequence() async throws {
@@ -366,6 +385,38 @@ struct ClientTests {
         #expect(MockURLProtocol.requests[0].header("Idempotency-Key") == "deploy-4812")
     }
 
+    @Test func anyOtherKeyIsTheServersToJudge() async throws {
+        MockURLProtocol.script([.error(401, "invalid_key")])
+        let honk = try Honk(url: "https://honk.test", key: " hka_mobile ", configuration: mockConfiguration())
+        await #expect {
+            try await honk.send(Message("x"))
+        } throws: { error in
+            guard case HonkError.auth(let f) = error else { return false }
+            return f.status == 401 && f.code == "invalid_key" && f.attempts == 1
+        }
+        #expect(MockURLProtocol.requests.map { $0.header("Authorization") } == ["Bearer hka_mobile"])
+    }
+
+    @Test func fromEnvironmentTakesTheInitializersOptions() async throws {
+        MockURLProtocol.script([.error(503, "unavailable"), .accepted(warnings: #"[{"field":"title","code":"truncated","message":"shortened"}]"#)])
+        let seen = Seen()
+        let honk = try Honk.fromEnvironment(
+            ["HONK_URL": "https://honk.test", "HONK_KEY": testKey, "HONK_CHANNEL": "ops"],
+            timeout: .seconds(2), retries: 1, deadline: .seconds(10),
+            backoff: Backoff(base: .milliseconds(1), max: .milliseconds(2)),
+            configuration: mockConfiguration(), userAgent: "cron-job/1.0",
+            onWarnings: { warnings, accepted in seen.append(warnings, accepted.id) }
+        )
+        #expect(honk.timeout == .seconds(2) && honk.retries == 1 && honk.deadline == .seconds(10))
+        #expect(honk.backoff.base == .milliseconds(1) && honk.backoff.max == .milliseconds(2))
+        try await honk.send(Message("x"))
+        let r = MockURLProtocol.requests
+        #expect(r.count == 2)
+        #expect(r[0].header("User-Agent") == "honk-swift/\(Honk.version) cron-job/1.0")
+        #expect(r[0].json["channel"] as? String == "ops")
+        #expect(seen.calls.map { $0.0.map(\.code) } == [["truncated"]])
+    }
+
 }
 
 /// Records `onWarnings` calls (the hook is `@Sendable`).
@@ -380,7 +431,8 @@ final class Seen: @unchecked Sendable {
     @Test func rejectsMissingOrMalformedURLAndKey() {
         let cases: [(String, String, String)] = [
             ("", testKey, "HONK_URL"), ("honk.example.com", testKey, "https://"),
-            ("https://h", "", "HONK_KEY"), ("https://h", "hka_mobile", "honk_"),
+            ("https://h", "", "HONK_KEY"), ("https://h", "honk_ab\u{7F}cd", "control characters"),
+            ("https://h", "honk_ab\ncd", "control characters"), ("https://h", "honk_€", "control characters"),
         ]
         for (url, key, needle) in cases {
             #expect {
@@ -399,6 +451,8 @@ final class Seen: @unchecked Sendable {
     @Test func fromEnvironment() throws {
         let honk = try Honk.fromEnvironment(["HONK_URL": "https://honk.example.com", "HONK_KEY": testKey, "HONK_SOURCE": "cron"])
         #expect(honk.defaults == Defaults(source: "cron"))
+        #expect(honk.timeout == .seconds(5) && honk.retries == 4 && honk.deadline == .seconds(30))
+        #expect(honk.backoff == Backoff() && honk.onWarnings == nil)
     }
 
     @Test func uuidv7IsVersion7AndTimeOrdered() throws {

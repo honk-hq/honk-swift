@@ -20,7 +20,7 @@ import Foundation
 /// The ingestion key is a server-side secret: use this package in server-side Swift (Vapor,
 /// Hummingbird), macOS tools and CLIs, never inside an app you ship to users.
 public final class Honk: Sendable {
-    public static let version = "0.4.1"
+    public static let version = "0.5.0"
 
     /// Base URL of the Honk server.
     public let url: URL
@@ -37,7 +37,8 @@ public final class Honk: Sendable {
 
     /// - Parameters:
     ///   - url: base address of your Honk server, e.g. `https://honk.example.com`.
-    ///   - key: a project ingestion key (`honk_…`). Keep it on the server.
+    ///   - key: a project ingestion key (`honk_…`). Keep it on the server. Only a missing key or
+    ///     one a header cannot carry throws here; a wrong key is the server's `401 invalid_key`.
     ///   - timeout: one HTTP attempt.
     ///   - retries: retries after the first attempt (network errors, 429 and 5xx only).
     ///   - deadline: total budget of one send, waits included.
@@ -72,8 +73,10 @@ public final class Honk: Sendable {
         guard !k.isEmpty else {
             throw .invalidConfiguration("key is required (a project ingestion key honk_…; is HONK_KEY set?)")
         }
-        guard k.hasPrefix("honk_"), k.utf8.allSatisfy({ (0x21...0x7E).contains($0) }) else {
-            throw .invalidConfiguration("key must be a project ingestion key starting with honk_ (create one under Project → Keys)")
+        // Only what an HTTP header cannot carry is refused here; any other key is the server's to
+        // judge (401 invalid_key).
+        guard Wire.sendableHeaderValue(k) else {
+            throw .invalidConfiguration("key must not contain control characters or characters beyond U+00FF (it could not be sent as a header)")
         }
         guard retries >= 0, timeout > .zero, deadline > .zero, backoff.base > .zero, backoff.max > .zero else {
             throw .invalidConfiguration("timeout, deadline and backoff must be positive, retries ≥ 0")
@@ -95,13 +98,16 @@ public final class Honk: Sendable {
     }
 
     /// Reads `HONK_URL`, `HONK_KEY` and the optional `HONK_SOURCE`, `HONK_ENVIRONMENT`,
-    /// `HONK_CHANNEL` defaults.
+    /// `HONK_CHANNEL` defaults. The other parameters are those of `init(url:key:…)`, with the
+    /// same defaults.
     public static func fromEnvironment(
         _ environment: [String: String] = ProcessInfo.processInfo.environment,
         timeout: Duration = .seconds(5),
         retries: Int = 4,
         deadline: Duration = .seconds(30),
+        backoff: Backoff = Backoff(),
         configuration: URLSessionConfiguration = .ephemeral,
+        userAgent: String? = nil,
         onWarnings: (@Sendable (_ warnings: [Warning], _ accepted: Accepted) -> Void)? = nil
     ) throws(HonkError) -> Honk {
         try Honk(
@@ -111,7 +117,9 @@ public final class Honk: Sendable {
             retries: retries,
             deadline: deadline,
             defaults: Defaults(source: environment["HONK_SOURCE"], environment: environment["HONK_ENVIRONMENT"], channel: environment["HONK_CHANNEL"]),
+            backoff: backoff,
             configuration: configuration,
+            userAgent: userAgent,
             onWarnings: onWarnings
         )
     }
@@ -125,14 +133,17 @@ public final class Honk: Sendable {
     /// to `onWarnings`). It refuses only what it cannot deliver (`HonkError.validation`).
     ///
     /// - Parameter idempotencyKey: a stable key for this event (1–128 printable ASCII
-    ///   characters), e.g. "request-4812". Default: a new UUIDv7, reused on every retry.
+    ///   characters), e.g. "request-4812". Default: a new UUIDv7, reused on every retry. Only a
+    ///   key a header cannot carry (control characters, characters beyond U+00FF) is refused
+    ///   before sending; any other key outside the rule is the server's `422`.
     /// - Throws: `HonkError`, or `CancellationError` when the task is cancelled.
     @discardableResult
     public func send(_ message: Message, idempotencyKey: String? = nil) async throws -> Accepted {
         let body = try Wire.encode(message, defaults: defaults)
         let key = idempotencyKey ?? UUIDv7.make()
-        guard Wire.validIdempotencyKey(key) else {
-            throw Wire.localValidation([FieldError(field: "Idempotency-Key", code: "invalid_format", message: "use 1-128 printable ASCII characters without spaces, e.g. \"request-4812\"")])
+        // Only a key a header cannot carry is refused here; the server checks the rest (422).
+        guard Wire.sendableHeaderValue(key) else {
+            throw Wire.localValidation([FieldError(field: "Idempotency-Key", code: "invalid_format", message: "cannot be sent as a header (control characters or characters beyond U+00FF); use 1-128 printable ASCII characters, e.g. \"request-4812\"")])
         }
         var request = URLRequest(url: url.appendingPathComponent("v1/messages"))
         request.httpMethod = "POST"

@@ -34,7 +34,7 @@ it, so your phone tells one short story instead of raising two alarms.
 
 ```swift
 // Package.swift
-.package(url: "https://github.com/honk-hq/honk-swift.git", from: "0.4.0"),
+.package(url: "https://github.com/honk-hq/honk-swift.git", from: "0.5.0"),
 // target:
 .product(name: "HonkHonk", package: "honk-swift"),
 ```
@@ -54,7 +54,10 @@ try await honk.beep("Backup finished", "nightly pg_dump took 42 s")
 ```
 
 Or explicitly: `let honk = try Honk(url: "https://honk.example.com", key: key)`. The initialiser
-throws `HonkError.invalidConfiguration` for a missing or malformed URL or key.
+throws `HonkError.invalidConfiguration` for a missing or malformed URL, or a missing key (or one
+an HTTP header cannot carry); a wrong key is the server's `401 invalid_key` (`.auth`).
+`fromEnvironment` takes the same options as the initialiser (`timeout`, `retries`, `deadline`,
+`backoff`, `configuration`, `userAgent`, `onWarnings`).
 
 ## The Honk scale
 
@@ -236,14 +239,14 @@ recovery) [request req_…]`.
 
 | Case | When | What to do |
 |---|---|---|
-| `.validation` | the server refused it (`400 invalid_json`, `413`, `415`, `422 unknown_field`, an invalid `event_type`); `fields` lists every refused field. `isLocal`: no message and no title, nothing sent | fix the message |
+| `.validation` | the server refused it (`400 invalid_json`, `413`, `415`, `422 unknown_field`, an invalid `event_type`); `fields` lists every refused field. `isLocal`: no message and no title, or an `idempotencyKey` a header cannot carry (control characters, characters beyond U+00FF), nothing sent | fix the message |
 | `.auth` | `401 invalid_key`, `403 project_suspended`, `workspace_suspended` | fix the key |
 | `.quota` | `429 quota_exceeded` (daily) or `rate_limited`, after retries | retry after `retryAfter` |
 | `.conflict` | `409 idempotency_conflict`: same key, different payload | new key or original payload |
 | `.network` / `.timeout` | unreachable / no answer before the deadline | retry later, same key |
 | `.server` | `5xx` on every attempt | retry later, same key |
 | `.http` | anything else (wrong URL → 404, a redirect) | fix the URL |
-| `.invalidConfiguration` | bad URL or key passed to `Honk(url:key:)` | fix the configuration |
+| `.invalidConfiguration` | missing or malformed URL, missing key passed to `Honk(url:key:)` | fix the configuration |
 
 ```swift
 do {

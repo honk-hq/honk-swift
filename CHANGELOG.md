@@ -6,6 +6,8 @@ All notable changes to the `HonkHonk` Swift package are documented here. The for
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-19
+
 ### Added
 - `Accepted.warnings`: what the server corrected before accepting the message (`Warning` with `field`,
   `code`, `message`; codes `truncated`, `normalized`, `ignored`, `clamped`, `downgraded`, `hashed`),
@@ -13,16 +15,27 @@ All notable changes to the `HonkHonk` Swift package are documented here. The for
   called after a send that has any.
 - A title-only message: `Message(title: "Deploy finished")` (`message` defaults to `""`); a
   message or a title is required.
+- `Honk.fromEnvironment(…)` takes `backoff:` and `userAgent:` as well, with the initialiser's
+  defaults, so it configures everything `Honk(url:key:…)` does.
 
 ### Changed
 - **Breaking:** the library is a thin wrapper of the "deliver first" server (contracts/API.md
   §5.1). It no longer checks field contents (lengths, enums, URLs, actions, metadata, TTL,
   `source_sequence`, the 16 KiB body): the server shortens or leaves out what it cannot use and
   accepts the message with a warning, and refuses only what it cannot deliver. Before sending,
-  only a missing message and title (and an Idempotency-Key a header cannot carry) throw
+  only a missing message and title (and an Idempotency-Key a header cannot carry, below) throw
   `HonkError.validation` with `isLocal`.
 - `uhoh`/`phew`/`problem`/`recovery` take an optional `groupKey`:
   recoveries and `sourceSequence` no longer need one; without one, messages group by title.
+- The key is no longer required to start with `honk_` (nor to be printable ASCII) locally: a
+  wrong key is sent and comes back as the server's `401 invalid_key` (`HonkError.auth`). Only a
+  missing key, or one with control characters or characters beyond U+00FF (an HTTP header
+  cannot carry them), throws `HonkError.invalidConfiguration`.
+- An `Idempotency-Key` is no longer checked against the 1–128 printable ASCII rule locally: one
+  that breaks it (a space, 129 characters, `ü`) is sent and comes back as the server's `422`,
+  field `Idempotency-Key` `invalid_format`. Only a key a header cannot carry (control
+  characters; characters beyond U+00FF, which URLSession would send as an empty value) throws
+  `HonkError.validation` with `isLocal` before sending.
 - `HonkError.description` ends with the server's request id (`[request req_…]`).
 - Non-finite metadata numbers (`.nan`, infinities) are sent as text instead of failing the send.
 - The docs say that the level alone decides how the push interrupts, and that `.urgent` from a key
